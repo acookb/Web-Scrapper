@@ -1,12 +1,13 @@
 import { load } from 'cheerio';
-import type { Cheerio } from 'cheerio';
-import type { Element } from 'domhandler';
+import type { CheerioAPI } from 'cheerio';
 import type {
   ScrapeResult,
   ScrapedLinkData,
 } from '../../domain/services/scraper.port';
+import { isJavascriptUrl } from './html-fragment';
+import { extractLinkName } from './link-name';
 
-export const MAX_LINK_NAME_LENGTH = 500;
+export const MAX_HREF_LENGTH = 2048;
 
 /**
  * Parses an HTML document and returns its title plus every `<a href>` anchor
@@ -27,30 +28,29 @@ export function extractPageData(
   $('a[href]').each((_, element) => {
     const anchor = $(element);
     const rawHref = (anchor.attr('href') ?? '').trim();
-    if (rawHref.toLowerCase().startsWith('javascript:')) {
+    if (isJavascriptUrl(rawHref)) {
       return;
     }
 
     links.push({
-      href: toAbsoluteUrl(rawHref, baseUrl),
-      name: extractLinkName(anchor),
+      href: truncate(toAbsoluteUrl(rawHref, baseUrl), MAX_HREF_LENGTH),
+      name: extractLinkName($, anchor),
     });
   });
 
-  return {
-    title: collapseWhitespace($('title').first().text()),
-    links,
-  };
+  return { title: extractTitle($), links };
 }
 
-/**
- * The visible text is used as the link name. When the body has no text
- * (e.g. an image-only link) a truncated fragment of its inner HTML is kept.
- */
-function extractLinkName(anchor: Cheerio<Element>): string {
-  const text = collapseWhitespace(anchor.text());
-  const name = text || collapseWhitespace(anchor.html() ?? '');
-  return truncate(name, MAX_LINK_NAME_LENGTH);
+/** The document title; `<title>` elements inside inline SVG icons are ignored. */
+function extractTitle($: CheerioAPI): string {
+  const headTitle = $('head > title').first().text();
+  const title =
+    headTitle ||
+    $('title')
+      .filter((_, element) => $(element).closest('svg').length === 0)
+      .first()
+      .text();
+  return title.replace(/\s+/g, ' ').trim();
 }
 
 function resolveBaseUrl(
@@ -73,10 +73,6 @@ function toAbsoluteUrl(href: string, baseUrl: string): string {
   } catch {
     return href;
   }
-}
-
-function collapseWhitespace(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
 }
 
 function truncate(value: string, maxLength: number): string {
