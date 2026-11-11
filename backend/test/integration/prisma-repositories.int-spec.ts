@@ -109,17 +109,58 @@ describe('Prisma repositories (PostgreSQL)', () => {
     expect(stored.items.map((l) => l.name)).toEqual(['New']);
   });
 
-  it('records the error when a page fails', async () => {
+  it('records the error when an in-progress page fails', async () => {
     const page = await createPage();
 
-    const failed = await pages.markFailed({
-      pageId: page.id,
-      errorMessage: 'timeout',
-    });
+    await expect(
+      pages.markFailed({ pageId: page.id, errorMessage: 'timeout' }),
+    ).resolves.toBe(true);
 
-    expect(failed).toMatchObject({
+    await expect(pages.findById(page.id)).resolves.toMatchObject({
       status: PageStatus.FAILED,
       errorMessage: 'timeout',
+    });
+  });
+
+  it('never fails a page that already completed', async () => {
+    const page = await createPage();
+    await pages.markCompleted({ pageId: page.id, title: 'Done', links: [] });
+
+    await expect(
+      pages.markFailed({ pageId: page.id, errorMessage: 'late failure' }),
+    ).resolves.toBe(false);
+    await expect(pages.findById(page.id)).resolves.toMatchObject({
+      status: PageStatus.COMPLETED,
+      errorMessage: null,
+    });
+  });
+
+  it('fails only pages that have been in progress for too long', async () => {
+    const stale = await createPage('https://stale.example/');
+    const finished = await createPage('https://finished.example/');
+    await pages.markCompleted({ pageId: finished.id, title: 'T', links: [] });
+    const cutoff = new Date(Date.now() + 1000);
+    const fresh = await prisma.scrapedPage.create({
+      data: {
+        id: randomUUID(),
+        url: 'https://fresh.example/',
+        createdAt: new Date(cutoff.getTime() + 60_000),
+      },
+    });
+
+    await expect(pages.failStale(cutoff, 'Processing timed out')).resolves.toBe(
+      1,
+    );
+
+    await expect(pages.findById(stale.id)).resolves.toMatchObject({
+      status: PageStatus.FAILED,
+      errorMessage: 'Processing timed out',
+    });
+    await expect(pages.findById(finished.id)).resolves.toMatchObject({
+      status: PageStatus.COMPLETED,
+    });
+    await expect(pages.findById(fresh.id)).resolves.toMatchObject({
+      status: PageStatus.IN_PROGRESS,
     });
   });
 });

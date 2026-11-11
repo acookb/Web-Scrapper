@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { PageStatus } from '../../domain/enums/page-status.enum';
+import { PermanentScrapeError } from '../../domain/errors/permanent-scrape-error';
 import {
   PAGE_ID,
   buildPage,
@@ -71,6 +72,18 @@ describe('ProcessScrapeUseCase', () => {
       errorMessage: 'timeout',
     });
     expect(repository.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it('fails immediately on a permanent error, without retrying', async () => {
+    scraper.scrape.mockRejectedValue(
+      new PermanentScrapeError('Request failed with status code 404'),
+    );
+
+    await expect(useCase.execute(command)).resolves.toBeUndefined();
+    expect(repository.markFailed).toHaveBeenCalledWith({
+      pageId: PAGE_ID,
+      errorMessage: 'Request failed with status code 404',
+    });
   });
 
   it('skips jobs whose page no longer exists', async () => {

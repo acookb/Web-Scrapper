@@ -1,18 +1,28 @@
 import { Catch, HttpStatus } from '@nestjs/common';
 import type { ArgumentsHost, ExceptionFilter } from '@nestjs/common';
 import type { Response } from 'express';
+import { ScrapeQueueUnavailableError } from '../../application/errors/scrape-queue-unavailable.error';
 import { InvalidUrlError } from '../../domain/errors/invalid-url.error';
 import { PageNotFoundError } from '../../domain/errors/page-not-found.error';
 
-type DomainError = InvalidUrlError | PageNotFoundError;
+type MappedError =
+  InvalidUrlError | PageNotFoundError | ScrapeQueueUnavailableError;
 
-@Catch(InvalidUrlError, PageNotFoundError)
-export class DomainExceptionFilter implements ExceptionFilter<DomainError> {
-  catch(error: DomainError, host: ArgumentsHost): void {
-    const status =
-      error instanceof PageNotFoundError
-        ? HttpStatus.NOT_FOUND
-        : HttpStatus.BAD_REQUEST;
+function statusFor(error: MappedError): HttpStatus {
+  if (error instanceof PageNotFoundError) {
+    return HttpStatus.NOT_FOUND;
+  }
+  if (error instanceof ScrapeQueueUnavailableError) {
+    return HttpStatus.SERVICE_UNAVAILABLE;
+  }
+  return HttpStatus.BAD_REQUEST;
+}
+
+/** Translates domain and application errors into HTTP responses. */
+@Catch(InvalidUrlError, PageNotFoundError, ScrapeQueueUnavailableError)
+export class DomainExceptionFilter implements ExceptionFilter<MappedError> {
+  catch(error: MappedError, host: ArgumentsHost): void {
+    const status = statusFor(error);
 
     host
       .switchToHttp()

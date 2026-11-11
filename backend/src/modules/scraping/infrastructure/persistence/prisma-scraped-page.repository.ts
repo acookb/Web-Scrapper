@@ -84,14 +84,25 @@ export class PrismaScrapedPageRepository implements ScrapedPageRepository {
     return toDomainPage(record);
   }
 
-  async markFailed(input: FailScrapedPageInput): Promise<ScrapedPage> {
-    const record = await this.prisma.scrapedPage.update({
-      where: { id: input.pageId },
+  async markFailed(input: FailScrapedPageInput): Promise<boolean> {
+    const { count } = await this.prisma.scrapedPage.updateMany({
+      where: { id: input.pageId, status: PrismaPageStatus.IN_PROGRESS },
       data: {
         status: PrismaPageStatus.FAILED,
         errorMessage: input.errorMessage,
       },
     });
-    return toDomainPage(record);
+    return count > 0;
+  }
+
+  async failStale(createdBefore: Date, errorMessage: string): Promise<number> {
+    const { count } = await this.prisma.scrapedPage.updateMany({
+      where: {
+        status: PrismaPageStatus.IN_PROGRESS,
+        createdAt: { lt: createdBefore },
+      },
+      data: { status: PrismaPageStatus.FAILED, errorMessage },
+    });
+    return count;
   }
 }

@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { PermanentScrapeError } from '../../domain/errors/permanent-scrape-error';
 import { SCRAPED_PAGE_REPOSITORY } from '../../domain/repositories/scraped-page.repository';
 import type { ScrapedPageRepository } from '../../domain/repositories/scraped-page.repository';
 import { SCRAPER_PORT } from '../../domain/services/scraper.port';
@@ -8,8 +9,8 @@ export interface ProcessScrapeCommand {
   pageId: string;
   url: string;
   /**
-   * When false the error is rethrown so the queue can retry the job;
-   * when true the page is persisted as FAILED.
+   * When false a retryable error is rethrown so the queue retries the job;
+   * when true (or the error is permanent) the page is stored as FAILED.
    */
   isFinalAttempt: boolean;
 }
@@ -42,8 +43,9 @@ export class ProcessScrapeUseCase {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown scraping error';
+      const isPermanent = error instanceof PermanentScrapeError;
 
-      if (!command.isFinalAttempt) {
+      if (!isPermanent && !command.isFinalAttempt) {
         this.logger.warn(
           `Scrape of page ${command.pageId} failed, will retry: ${message}`,
         );

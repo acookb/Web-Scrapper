@@ -29,7 +29,13 @@ export interface ScrapedPageRepository {
     params: PaginationParams,
   ): Promise<PaginatedResult<ScrapedPage>>;
   markCompleted(input: CompleteScrapedPageInput): Promise<ScrapedPage>;
-  markFailed(input: FailScrapedPageInput): Promise<ScrapedPage>;
+  /**
+   * Moves an in-progress page to FAILED. Pages that already reached a final
+   * state are left untouched; returns whether the page was updated.
+   */
+  markFailed(input: FailScrapedPageInput): Promise<boolean>;
+  /** Fails every page still in progress that was created before `createdBefore`. */
+  failStale(createdBefore: Date, errorMessage: string): Promise<number>;
 }
 
 export const SCRAPED_PAGE_REPOSITORY = Symbol('SCRAPED_PAGE_REPOSITORY');

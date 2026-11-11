@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { createServer } from 'http';
-import type { Server } from 'http';
+import type { IncomingMessage, Server, ServerResponse } from 'http';
 import type { AddressInfo } from 'net';
 import request from 'supertest';
 import type { App } from 'supertest/types';
@@ -15,19 +15,41 @@ import type {
   PageResponse,
 } from '../../src/modules/scraping/presentation/dto/page.response';
 import { ScrapingWorkerModule } from '../../src/modules/scraping/scraping-worker.module';
+import { ScrapingModule } from '../../src/modules/scraping/scraping.module';
 
 const LINK_COUNT = 23;
+const SLOW_RESPONSE_MS = 1500;
 
-const FIXTURES: Record<string, string> = {
-  '/catalog': `
-    <html><head><title>Google Product</title></head><body>
-      ${Array.from(
-        { length: LINK_COUNT - 1 },
-        (_, i) => `<a href="/products/${i}">Product ${i}</a>`,
-      ).join('\n')}
-      <a href="/assets/image.png"><img src="something.png"></a>
-      <a href="javascript:void(0)">Ignored</a>
-    </body></html>`,
+const CATALOG = `
+  <html><head><title>Google Product</title></head><body>
+    ${Array.from(
+      { length: LINK_COUNT - 1 },
+      (_, i) => `<a href="/products/${i}">Product ${i}</a>`,
+    ).join('\n')}
+    <a href="/assets/image.png"><img src="something.png" onerror="steal()"></a>
+    <a href="javascript:void(0)">Ignored</a>
+  </body></html>`;
+
+type Route = (res: ServerResponse) => void;
+
+const html =
+  (body: string, status = 200): Route =>
+  (res) => {
+    res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(body);
+  };
+
+const ROUTES: Record<string, Route> = {
+  '/catalog': html(CATALOG),
+  '/fast': html('<title>Fast</title><a href="/x">X</a>'),
+  '/slow': (res) =>
+    setTimeout(() => html('<title>Slow</title>')(res), SLOW_RESPONSE_MS),
+  '/missing': html('Not found', 404),
+  '/broken': html('boom', 500),
+  '/report.pdf': (res) => {
+    res.writeHead(200, { 'Content-Type': 'application/pdf' });
+    res.end('%PDF-1.7');
+  },
 };
 
 /**
@@ -38,14 +60,15 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
   let app: INestApplication<App>;
   let fixtureServer: Server;
   let fixtureOrigin: string;
+  const hits = new Map<string, number>();
 
   beforeAll(async () => {
     Logger.overrideLogger(['error']);
 
-    fixtureServer = createServer((req, res) => {
-      const body = FIXTURES[req.url ?? ''];
-      res.writeHead(body ? 200 : 500, { 'Content-Type': 'text/html' });
-      res.end(body ?? 'boom');
+    fixtureServer = createServer((req: IncomingMessage, res) => {
+      const path = req.url ?? '';
+      hits.set(path, (hits.get(path) ?? 0) + 1);
+      (ROUTES[path] ?? html('Not found', 404))(res);
     });
     await new Promise<void>((resolve) =>
       fixtureServer.listen(0, '127.0.0.1', resolve),
@@ -53,7 +76,7 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
     fixtureOrigin = `http://127.0.0.1:${(fixtureServer.address() as AddressInfo).port}`;
 
     const moduleRef = await Test.createTestingModule({
-      imports: [CoreModule, ScrapingWorkerModule],
+      imports: [CoreModule, ScrapingModule, ScrapingWorkerModule],
     }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
@@ -78,10 +101,11 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
   }
 
   async function waitUntilProcessed(id: string): Promise<PageResponse> {
-    const deadline = Date.now() + 25_000;
+    const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       const response = await request(app.getHttpServer())
         .get('/pages')
+        .query({ limit: 100 })
         .expect(200);
       const page = (response.body as { data: PageResponse[] }).data.find(
         (item) => item.id === id,
@@ -89,7 +113,7 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
       if (page && page.status !== PageStatus.IN_PROGRESS) {
         return page;
       }
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 100));
     }
     throw new Error(`Page ${id} was not processed in time`);
   }
@@ -124,12 +148,45 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
     ]);
   });
 
-  it('marks the page as failed once every retry is exhausted', async () => {
+  it('does not let a slow page hold back a fast one', async () => {
+    const slow = await addPage('/slow');
+    const fast = await addPage('/fast');
+
+    const fastResult = await waitUntilProcessed(fast.id);
+    const slowAtThatMoment = await request(app.getHttpServer())
+      .get(`/pages/${slow.id}/links`)
+      .expect(200);
+
+    expect(fastResult.status).toBe('COMPLETED');
+    expect((slowAtThatMoment.body as PageLinksResponse).page.status).toBe(
+      'IN_PROGRESS',
+    );
+    await expect(waitUntilProcessed(slow.id)).resolves.toMatchObject({
+      status: 'COMPLETED',
+      title: 'Slow',
+    });
+  });
+
+  it('retries transient failures and fails the page once attempts run out', async () => {
     const created = await addPage('/broken');
 
     const processed = await waitUntilProcessed(created.id);
 
     expect(processed.status).toBe('FAILED');
     expect(processed.errorMessage).toContain('500');
+    expect(hits.get('/broken')).toBe(3);
+  });
+
+  it.each([
+    ['/missing', 'status code 404'],
+    ['/report.pdf', 'Unsupported content type application/pdf'],
+  ])('fails %s on the first attempt', async (path, message) => {
+    const created = await addPage(path);
+
+    const processed = await waitUntilProcessed(created.id);
+
+    expect(processed.status).toBe('FAILED');
+    expect(processed.errorMessage).toContain(message);
+    expect(hits.get(path)).toBe(1);
   });
 });

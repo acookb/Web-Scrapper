@@ -50,6 +50,7 @@ export function mockScrapedPageRepository(): jest.Mocked<ScrapedPageRepository> 
     findPaginated: jest.fn(),
     markCompleted: jest.fn(),
     markFailed: jest.fn(),
+    failStale: jest.fn(),
   };
 }
 

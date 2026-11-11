@@ -1,19 +1,18 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { EnvironmentVariables } from './config/environment';
+import { EnvironmentModule } from './config/environment.module';
 
-/** Configuration and infrastructure connections shared by the API and the worker. */
+/** Validated configuration and the Redis connection shared by the API and the worker. */
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    EnvironmentModule,
     BullModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        prefix: config.get<string>('QUEUE_PREFIX', 'bull'),
-        connection: {
-          host: config.get<string>('REDIS_HOST', 'localhost'),
-          port: Number(config.get<string>('REDIS_PORT', '6379')),
-        },
+      imports: [EnvironmentModule],
+      inject: [EnvironmentVariables],
+      useFactory: (env: EnvironmentVariables) => ({
+        prefix: env.QUEUE_PREFIX,
+        connection: { host: env.REDIS_HOST, port: env.REDIS_PORT },
       }),
     }),
   ],

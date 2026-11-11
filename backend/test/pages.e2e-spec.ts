@@ -95,6 +95,24 @@ describe('Pages HTTP API', () => {
       expect(scrapeQueue.enqueue).not.toHaveBeenCalled();
     });
 
+    it('returns 503 and fails the page when the queue is unavailable', async () => {
+      pageRepository.create.mockImplementation(({ id, url }) =>
+        Promise.resolve(ScrapedPage.createInProgress(id, url)),
+      );
+      scrapeQueue.enqueue.mockRejectedValue(new Error('Connection is closed'));
+
+      const response = await request(app.getHttpServer())
+        .post('/pages')
+        .send({ url: 'https://example.com' })
+        .expect(503);
+
+      expect(response.body).toMatchObject({
+        statusCode: 503,
+        error: 'ScrapeQueueUnavailableError',
+      });
+      expect(pageRepository.markFailed).toHaveBeenCalled();
+    });
+
     it('returns 500 rather than 400 when infrastructure fails', async () => {
       pageRepository.create.mockRejectedValue(new Error('database down'));
 

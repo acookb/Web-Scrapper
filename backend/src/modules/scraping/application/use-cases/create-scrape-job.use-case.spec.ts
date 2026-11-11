@@ -5,7 +5,11 @@ import {
   mockScrapeQueue,
   mockScrapedPageRepository,
 } from '../../testing/factories';
-import { CreateScrapeJobUseCase } from './create-scrape-job.use-case';
+import { ScrapeQueueUnavailableError } from '../errors/scrape-queue-unavailable.error';
+import {
+  CreateScrapeJobUseCase,
+  ENQUEUE_FAILED_ERROR,
+} from './create-scrape-job.use-case';
 
 describe('CreateScrapeJobUseCase', () => {
   const repository = mockScrapedPageRepository();
@@ -39,12 +43,17 @@ describe('CreateScrapeJobUseCase', () => {
     expect(queue.enqueue).not.toHaveBeenCalled();
   });
 
-  it('propagates queue failures', async () => {
-    repository.create.mockResolvedValue(buildPage());
+  it('fails the page instead of orphaning it when the queue is down', async () => {
+    const page = buildPage({ status: PageStatus.IN_PROGRESS });
+    repository.create.mockResolvedValue(page);
     queue.enqueue.mockRejectedValue(new Error('redis down'));
 
     await expect(
       useCase.execute({ url: 'https://example.com' }),
-    ).rejects.toThrow('redis down');
+    ).rejects.toBeInstanceOf(ScrapeQueueUnavailableError);
+    expect(repository.markFailed).toHaveBeenCalledWith({
+      pageId: page.id,
+      errorMessage: ENQUEUE_FAILED_ERROR,
+    });
   });
 });
