@@ -197,6 +197,31 @@ describe('extractPageData', () => {
       expect(isWellFormed(name)).toBe(true);
     });
 
+    it('shortens nested elements while keeping them closed', () => {
+      const [name] = linkNames(
+        `<a href="/n"><span class="icon"><img src="${'z'.repeat(MAX_LINK_NAME_LENGTH)}.png"></span></a>`,
+      );
+      expect(name).toMatch(/^<span class="icon"><img src="z+…">…<\/span>…$/);
+      expect(isWellFormed(name)).toBe(true);
+    });
+
+    it('drops short attributes when shortening values is not enough', () => {
+      const attributes = Array.from(
+        { length: 80 },
+        (_, i) => `data-a${i}="v"`,
+      ).join(' ');
+      const [name] = linkNames(`<a href="/m"><img ${attributes}></a>`);
+      expect(name.length).toBeLessThanOrEqual(MAX_LINK_NAME_LENGTH + 1);
+      expect(isWellFormed(name)).toBe(true);
+    });
+
+    it('ignores comments when building the fragment', () => {
+      const [name] = linkNames(
+        `<a href="/c"><!--${'c'.repeat(MAX_LINK_NAME_LENGTH)}--></a>`,
+      );
+      expect(name).toBe('…');
+    });
+
     it('returns an empty name for an empty anchor', () => {
       expect(linkNames('<a href="/empty"></a>')).toEqual(['']);
     });

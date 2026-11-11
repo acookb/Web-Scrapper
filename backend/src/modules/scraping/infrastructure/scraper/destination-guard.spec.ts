@@ -59,6 +59,12 @@ describe('destination guard', () => {
     ).not.toThrow();
   });
 
+  it('passes DNS errors through unchanged', async () => {
+    await expect(lookup('no-such-host.invalid', false)).rejects.toMatchObject({
+      code: expect.stringMatching(/ENOTFOUND|EAI_AGAIN/) as unknown,
+    });
+  });
+
   it.each([true, false])(
     'blocks hostnames that resolve to private addresses (all=%p)',
     async (all) => {

@@ -66,6 +66,20 @@ describe('pagesApi', () => {
     })
   })
 
+  it('uses a single string message from the API as is', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse({ message: 'Page abc not found' }, 404),
+    )
+
+    await expect(fetchPageLinks('abc', 1)).rejects.toThrow('Page abc not found')
+  })
+
+  it('falls back to a generic message when the error has no message', async () => {
+    fetchMock.mockResolvedValue(jsonResponse({}, 503))
+
+    await expect(fetchPages(1)).rejects.toThrow('Request failed with status 503')
+  })
+
   it('falls back to a generic message when the error body is not JSON', async () => {
     fetchMock.mockResolvedValue(new Response('Bad gateway', { status: 502 }))
 

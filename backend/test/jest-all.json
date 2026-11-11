@@ -1,0 +1,30 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testRegex": "(\\.spec|\\.e2e-spec|\\.int-spec)\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "globalSetup": "<rootDir>/test/integration/global-setup.ts",
+  "setupFiles": ["<rootDir>/test/integration/setup-env.ts"],
+  "testTimeout": 30000,
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/**/*.spec.ts",
+    "!src/**/testing/**",
+    "!src/**/*.module.ts",
+    "!src/main.ts",
+    "!src/worker.ts"
+  ],
+  "coverageDirectory": "coverage",
+  "coverageReporters": ["text", "text-summary", "lcov"],
+  "coverageThreshold": {
+    "global": {
+      "statements": 95,
+      "lines": 95,
+      "functions": 95,
+      "branches": 80
+    }
+  }
+}

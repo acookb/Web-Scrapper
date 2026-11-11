@@ -14,5 +14,12 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     pool: 'threads',
     env: { VITE_API_BASE_URL: 'http://api.test' },
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/main.tsx', 'src/test/**', 'src/**/*.test.{ts,tsx}'],
+      reporter: ['text', 'text-summary', 'lcov'],
+      thresholds: { statements: 85, branches: 85, functions: 85, lines: 85 },
+    },
   },
 })
