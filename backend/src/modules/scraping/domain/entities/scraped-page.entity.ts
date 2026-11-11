@@ -12,7 +12,11 @@ export class ScrapedPage {
     public readonly updatedAt: Date,
   ) {}
 
-  static createInProgress(id: string, url: string, now = new Date()): ScrapedPage {
+  static createInProgress(
+    id: string,
+    url: string,
+    now = new Date(),
+  ): ScrapedPage {
     return new ScrapedPage(
       id,
       url,
@@ -23,9 +27,5 @@ export class ScrapedPage {
       now,
       now,
     );
-  }
-
-  isInProgress(): boolean {
-    return this.status === PageStatus.IN_PROGRESS;
   }
 }

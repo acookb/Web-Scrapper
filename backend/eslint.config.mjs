@@ -32,4 +32,12 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // `expect(mock.method)` is the idiomatic Jest assertion and never invokes
+    // the method unbound.
+    files: ['**/*.spec.ts', '**/*-spec.ts', '**/testing/**/*.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+    },
+  },
 );

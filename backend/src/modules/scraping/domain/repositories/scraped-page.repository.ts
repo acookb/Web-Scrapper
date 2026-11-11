@@ -1,19 +1,9 @@
-import { ScrapedPage } from '../entities/scraped-page.entity';
-import { PageStatus } from '../enums/page-status.enum';
-import { ScrapedLinkData } from '../services/scraper.port';
-
-export interface PaginationParams {
-  page: number;
-  limit: number;
-}
-
-export interface PaginatedResult<T> {
-  items: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
+import type {
+  PaginatedResult,
+  PaginationParams,
+} from '../../../../shared/pagination';
+import type { ScrapedPage } from '../entities/scraped-page.entity';
+import type { ScrapedLinkData } from '../services/scraper.port';
 
 export interface CreateScrapedPageInput {
   id: string;
@@ -23,6 +13,7 @@ export interface CreateScrapedPageInput {
 export interface CompleteScrapedPageInput {
   pageId: string;
   title: string;
+  /** Links in document order; the order is persisted for stable pagination. */
   links: ScrapedLinkData[];
 }
 
@@ -34,10 +25,11 @@ export interface FailScrapedPageInput {
 export interface ScrapedPageRepository {
   create(input: CreateScrapedPageInput): Promise<ScrapedPage>;
   findById(id: string): Promise<ScrapedPage | null>;
-  findPaginated(params: PaginationParams): Promise<PaginatedResult<ScrapedPage>>;
+  findPaginated(
+    params: PaginationParams,
+  ): Promise<PaginatedResult<ScrapedPage>>;
   markCompleted(input: CompleteScrapedPageInput): Promise<ScrapedPage>;
   markFailed(input: FailScrapedPageInput): Promise<ScrapedPage>;
-  updateStatus(id: string, status: PageStatus): Promise<void>;
 }
 
 export const SCRAPED_PAGE_REPOSITORY = Symbol('SCRAPED_PAGE_REPOSITORY');

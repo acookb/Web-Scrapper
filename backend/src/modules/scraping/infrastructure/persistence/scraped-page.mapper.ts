@@ -1,10 +1,9 @@
-import {
+import type {
   Link as PrismaLink,
-  PageStatus as PrismaPageStatus,
   ScrapedPage as PrismaScrapedPage,
 } from '@prisma/client';
-import { ScrapedPage } from '../../domain/entities/scraped-page.entity';
 import { Link } from '../../domain/entities/link.entity';
+import { ScrapedPage } from '../../domain/entities/scraped-page.entity';
 import { PageStatus } from '../../domain/enums/page-status.enum';
 
 export function toDomainPage(record: PrismaScrapedPage): ScrapedPage {
@@ -28,8 +27,4 @@ export function toDomainLink(record: PrismaLink): Link {
     record.name,
     record.createdAt,
   );
-}
-
-export function toPrismaStatus(status: PageStatus): PrismaPageStatus {
-  return status as PrismaPageStatus;
 }

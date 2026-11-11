@@ -1,52 +1,66 @@
-import { useState } from 'react'
-import { createPage } from '../api/pagesApi'
+import { useCallback, useState } from 'react'
+import { createPage, fetchPages } from '../api/pagesApi'
 import { PageTable } from '../components/PageTable'
 import { Pagination } from '../components/Pagination'
 import { UrlForm } from '../components/UrlForm'
-import { usePagesPolling } from '../hooks/usePagesPolling'
+import { usePolledQuery } from '../hooks/usePolledQuery'
+import type { Paginated, ScrapedPage } from '../types/pages'
+
+function hasPagesInProgress(result: Paginated<ScrapedPage>): boolean {
+  return result.data.some((page) => page.status === 'IN_PROGRESS')
+}
 
 export function LandingPage() {
-  const { pages, meta, page, setPage, isLoading, error, reload } =
-    usePagesPolling(10)
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [page, setPage] = useState(1)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  async function handleScrape(url: string) {
-    setIsSubmitting(true)
+  const fetchCurrentPage = useCallback(() => fetchPages(page), [page])
+  const pages = usePolledQuery(fetchCurrentPage, hasPagesInProgress)
+
+  async function handleScrape(url: string): Promise<boolean> {
     setSubmitError(null)
     try {
       await createPage(url)
-      await reload()
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Failed to scrape')
-    } finally {
-      setIsSubmitting(false)
+      setSubmitError(err instanceof Error ? err.message : 'Could not add the page')
+      return false
     }
+
+    // Newest pages are listed first, so show the first page.
+    if (page === 1) {
+      pages.refresh()
+    } else {
+      setPage(1)
+    }
+    return true
   }
 
+  const error = submitError ?? pages.error
+
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold text-slate-900">Web Scraper</h1>
-        <p className="mt-1 text-sm text-slate-600">
-          Add a URL to scrape its title and links asynchronously.
-        </p>
-      </header>
+    <main className="mx-auto max-w-3xl px-4 py-16">
+      <UrlForm onSubmit={handleScrape} />
 
-      <UrlForm onSubmit={handleScrape} isSubmitting={isSubmitting} />
-
-      {(submitError || error) && (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          {submitError || error}
+      {error && (
+        <p role="alert" className="mb-4 text-sm text-red-700">
+          {error}
         </p>
       )}
 
-      <PageTable pages={pages} isLoading={isLoading} />
-      <Pagination
-        page={page}
-        totalPages={meta.totalPages}
-        onPageChange={setPage}
-      />
+      {pages.isLoading ? (
+        <p className="text-sm text-gray-600">Loading pages…</p>
+      ) : (
+        pages.data && (
+          <>
+            <PageTable pages={pages.data.data} />
+            <Pagination
+              page={page}
+              totalPages={pages.data.meta.totalPages}
+              onPageChange={setPage}
+            />
+          </>
+        )
+      )}
     </main>
   )
 }

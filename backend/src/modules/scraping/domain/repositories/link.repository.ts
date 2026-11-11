@@ -1,8 +1,8 @@
-import { Link } from '../entities/link.entity';
-import {
+import type {
   PaginatedResult,
   PaginationParams,
-} from './scraped-page.repository';
+} from '../../../../shared/pagination';
+import type { Link } from '../entities/link.entity';
 
 export interface LinkRepository {
   findByPageId(

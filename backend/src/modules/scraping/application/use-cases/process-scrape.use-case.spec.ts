@@ -1,74 +1,82 @@
+import { Logger } from '@nestjs/common';
+import { PageStatus } from '../../domain/enums/page-status.enum';
+import {
+  PAGE_ID,
+  buildPage,
+  mockScrapedPageRepository,
+  mockScraper,
+} from '../../testing/factories';
 import { ProcessScrapeUseCase } from './process-scrape.use-case';
-import { ScrapedPage } from '../../domain/entities/scraped-page.entity';
-import type { ScrapedPageRepository } from '../../domain/repositories/scraped-page.repository';
-import type { ScraperPort } from '../../domain/services/scraper.port';
 
 describe('ProcessScrapeUseCase', () => {
-  const repository: jest.Mocked<ScrapedPageRepository> = {
-    create: jest.fn(),
-    findById: jest.fn(),
-    findPaginated: jest.fn(),
-    markCompleted: jest.fn(),
-    markFailed: jest.fn(),
-    updateStatus: jest.fn(),
+  const repository = mockScrapedPageRepository();
+  const scraper = mockScraper();
+  const useCase = new ProcessScrapeUseCase(repository, scraper);
+  const command = {
+    pageId: PAGE_ID,
+    url: 'https://example.com/',
+    isFinalAttempt: false,
   };
 
-  const scraper: jest.Mocked<ScraperPort> = {
-    scrape: jest.fn(),
-  };
-
-  let useCase: ProcessScrapeUseCase;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    useCase = new ProcessScrapeUseCase(repository, scraper);
+  beforeAll(() => {
+    Logger.overrideLogger(false);
   });
 
-  it('marks the page as completed when scraping succeeds', async () => {
-    const page = ScrapedPage.createInProgress(
-      'page-1',
-      'https://example.com',
+  beforeEach(() => {
+    jest.resetAllMocks();
+    repository.findById.mockResolvedValue(
+      buildPage({ status: PageStatus.IN_PROGRESS, title: null }),
     );
-    repository.findById.mockResolvedValue(page);
-    scraper.scrape.mockResolvedValue({
-      title: 'Example Domain',
-      links: [{ href: 'https://iana.org', name: 'IANA' }],
-    });
-    repository.markCompleted.mockResolvedValue(page);
+  });
 
-    await useCase.execute({ pageId: 'page-1', url: 'https://example.com' });
+  it('stores the title and links when scraping succeeds', async () => {
+    const links = [{ href: 'https://iana.org/', name: 'IANA' }];
+    scraper.scrape.mockResolvedValue({ title: 'Example Domain', links });
 
-    expect(scraper.scrape).toHaveBeenCalledWith('https://example.com');
+    await useCase.execute(command);
+
+    expect(scraper.scrape).toHaveBeenCalledWith('https://example.com/');
     expect(repository.markCompleted).toHaveBeenCalledWith({
-      pageId: 'page-1',
+      pageId: PAGE_ID,
       title: 'Example Domain',
-      links: [{ href: 'https://iana.org', name: 'IANA' }],
+      links,
     });
     expect(repository.markFailed).not.toHaveBeenCalled();
   });
 
-  it('marks the page as failed when scraping throws', async () => {
-    const page = ScrapedPage.createInProgress(
-      'page-2',
-      'https://example.com',
-    );
-    repository.findById.mockResolvedValue(page);
-    scraper.scrape.mockRejectedValue(new Error('timeout'));
-    repository.markFailed.mockResolvedValue(page);
+  it('falls back to the URL when the page has no title', async () => {
+    scraper.scrape.mockResolvedValue({ title: '', links: [] });
 
-    await useCase.execute({ pageId: 'page-2', url: 'https://example.com' });
+    await useCase.execute(command);
+
+    expect(repository.markCompleted).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'https://example.com/' }),
+    );
+  });
+
+  it('rethrows so the queue retries when attempts remain', async () => {
+    scraper.scrape.mockRejectedValue(new Error('timeout'));
+
+    await expect(useCase.execute(command)).rejects.toThrow('timeout');
+    expect(repository.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('marks the page as failed on the final attempt', async () => {
+    scraper.scrape.mockRejectedValue(new Error('timeout'));
+
+    await useCase.execute({ ...command, isFinalAttempt: true });
 
     expect(repository.markFailed).toHaveBeenCalledWith({
-      pageId: 'page-2',
+      pageId: PAGE_ID,
       errorMessage: 'timeout',
     });
     expect(repository.markCompleted).not.toHaveBeenCalled();
   });
 
-  it('skips processing when the page does not exist', async () => {
+  it('skips jobs whose page no longer exists', async () => {
     repository.findById.mockResolvedValue(null);
 
-    await useCase.execute({ pageId: 'missing', url: 'https://example.com' });
+    await useCase.execute(command);
 
     expect(scraper.scrape).not.toHaveBeenCalled();
   });

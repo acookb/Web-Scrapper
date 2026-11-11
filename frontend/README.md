@@ -1,12 +1,10 @@
-# Frontend — Web Scraper UI
+# Frontend: Web Scraper UI
 
-React + Vite + TypeScript + Tailwind CSS SPA with landing and page-detail views.
-
-See the root [README.md](../README.md) for full setup instructions.
+React + Vite + TypeScript + Tailwind CSS single-page app with the landing and page-details views. See the root [README](../README.md) for setup.
 
 ```bash
-npm install
-npm run dev      # http://localhost:5173
-npm test
-npm run build
+npm run dev     # http://localhost:5173
+npm test        # Vitest + React Testing Library
+npm run lint    # oxlint
+npm run build   # type-check + production build
 ```

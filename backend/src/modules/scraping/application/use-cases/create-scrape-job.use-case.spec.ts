@@ -1,63 +1,50 @@
-import { CreateScrapeJobUseCase } from './create-scrape-job.use-case';
-import { ScrapedPage } from '../../domain/entities/scraped-page.entity';
 import { PageStatus } from '../../domain/enums/page-status.enum';
-import type { ScrapedPageRepository } from '../../domain/repositories/scraped-page.repository';
-import type { ScrapeQueuePort } from '../ports/scrape-queue.port';
+import { InvalidUrlError } from '../../domain/errors/invalid-url.error';
+import {
+  buildPage,
+  mockScrapeQueue,
+  mockScrapedPageRepository,
+} from '../../testing/factories';
+import { CreateScrapeJobUseCase } from './create-scrape-job.use-case';
 
 describe('CreateScrapeJobUseCase', () => {
-  const repository: jest.Mocked<ScrapedPageRepository> = {
-    create: jest.fn(),
-    findById: jest.fn(),
-    findPaginated: jest.fn(),
-    markCompleted: jest.fn(),
-    markFailed: jest.fn(),
-    updateStatus: jest.fn(),
-  };
+  const repository = mockScrapedPageRepository();
+  const queue = mockScrapeQueue();
+  const useCase = new CreateScrapeJobUseCase(repository, queue);
 
-  const queue: jest.Mocked<ScrapeQueuePort> = {
-    enqueue: jest.fn(),
-  };
+  beforeEach(() => jest.resetAllMocks());
 
-  let useCase: CreateScrapeJobUseCase;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    useCase = new CreateScrapeJobUseCase(repository, queue);
-  });
-
-  it('creates a page in progress and enqueues a scrape job', async () => {
-    const page = ScrapedPage.createInProgress(
-      '11111111-1111-1111-1111-111111111111',
-      'https://example.com/',
-    );
+  it('persists the page as in progress and enqueues it', async () => {
+    const page = buildPage({ status: PageStatus.IN_PROGRESS, title: null });
     repository.create.mockResolvedValue(page);
-    queue.enqueue.mockResolvedValue(undefined);
 
-    const result = await useCase.execute({ url: 'https://example.com' });
+    const result = await useCase.execute({ url: ' https://example.com ' });
 
-    expect(repository.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        url: 'https://example.com/',
-      }),
-    );
+    expect(repository.create).toHaveBeenCalledWith({
+      id: expect.any(String) as string,
+      url: 'https://example.com/',
+    });
     expect(queue.enqueue).toHaveBeenCalledWith({
       pageId: page.id,
       url: page.url,
     });
-    expect(result.status).toBe(PageStatus.IN_PROGRESS);
+    expect(result).toBe(page);
   });
 
-  it('rejects invalid URLs', async () => {
-    await expect(useCase.execute({ url: 'not-a-url' })).rejects.toThrow(
-      'Invalid URL',
+  it('does not persist or enqueue an invalid URL', async () => {
+    await expect(useCase.execute({ url: 'not-a-url' })).rejects.toBeInstanceOf(
+      InvalidUrlError,
     );
     expect(repository.create).not.toHaveBeenCalled();
     expect(queue.enqueue).not.toHaveBeenCalled();
   });
 
-  it('rejects non-http protocols', async () => {
-    await expect(useCase.execute({ url: 'ftp://files.example.com' })).rejects.toThrow(
-      'Only HTTP and HTTPS URLs are supported',
-    );
+  it('propagates queue failures', async () => {
+    repository.create.mockResolvedValue(buildPage());
+    queue.enqueue.mockRejectedValue(new Error('redis down'));
+
+    await expect(
+      useCase.execute({ url: 'https://example.com' }),
+    ).rejects.toThrow('redis down');
   });
 });

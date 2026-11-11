@@ -1,18 +1,19 @@
 import { Injectable } from '@nestjs/common';
 import { PageStatus as PrismaPageStatus } from '@prisma/client';
-import { ScrapedPage } from '../../domain/entities/scraped-page.entity';
-import { PageStatus } from '../../domain/enums/page-status.enum';
-import {
+import type { ScrapedPage } from '../../domain/entities/scraped-page.entity';
+import type {
   CompleteScrapedPageInput,
   CreateScrapedPageInput,
   FailScrapedPageInput,
-  PaginatedResult,
-  PaginationParams,
   ScrapedPageRepository,
 } from '../../domain/repositories/scraped-page.repository';
 import { buildPaginatedResult } from '../../../../shared/pagination';
+import type {
+  PaginatedResult,
+  PaginationParams,
+} from '../../../../shared/pagination';
 import { PrismaService } from './prisma.service';
-import { toDomainPage, toPrismaStatus } from './scraped-page.mapper';
+import { toDomainPage } from './scraped-page.mapper';
 
 @Injectable()
 export class PrismaScrapedPageRepository implements ScrapedPageRepository {
@@ -37,11 +38,10 @@ export class PrismaScrapedPageRepository implements ScrapedPageRepository {
   async findPaginated(
     params: PaginationParams,
   ): Promise<PaginatedResult<ScrapedPage>> {
-    const skip = (params.page - 1) * params.limit;
     const [records, total] = await this.prisma.$transaction([
       this.prisma.scrapedPage.findMany({
-        orderBy: { createdAt: 'desc' },
-        skip,
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        skip: (params.page - 1) * params.limit,
         take: params.limit,
       }),
       this.prisma.scrapedPage.count(),
@@ -61,8 +61,9 @@ export class PrismaScrapedPageRepository implements ScrapedPageRepository {
 
       if (input.links.length > 0) {
         await tx.link.createMany({
-          data: input.links.map((link) => ({
+          data: input.links.map((link, position) => ({
             pageId: input.pageId,
+            position,
             href: link.href,
             name: link.name,
           })),
@@ -92,12 +93,5 @@ export class PrismaScrapedPageRepository implements ScrapedPageRepository {
       },
     });
     return toDomainPage(record);
-  }
-
-  async updateStatus(id: string, status: PageStatus): Promise<void> {
-    await this.prisma.scrapedPage.update({
-      where: { id },
-      data: { status: toPrismaStatus(status) },
-    });
   }
 }

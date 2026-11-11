@@ -1,80 +1,81 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { fetchPageLinks } from '../api/pagesApi'
 import { LinkTable } from '../components/LinkTable'
 import { Pagination } from '../components/Pagination'
-import type { PageLinksResponse } from '../types/pages'
+import { usePolledQuery } from '../hooks/usePolledQuery'
+import type { PageLinks } from '../types/pages'
+
+function isStillProcessing(result: PageLinks): boolean {
+  return result.page.status === 'IN_PROGRESS'
+}
 
 export function PageDetails() {
-  const { id } = useParams<{ id: string }>()
-  const [pageIndex, setPageIndex] = useState(1)
-  const [response, setResponse] = useState<PageLinksResponse | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { id = '' } = useParams<{ id: string }>()
+  const [page, setPage] = useState(1)
 
-  useEffect(() => {
-    if (!id) {
-      return
-    }
-
-    let cancelled = false
-    setIsLoading(true)
-
-    void fetchPageLinks(id, pageIndex, 10)
-      .then((data) => {
-        if (!cancelled) {
-          setResponse(data)
-          setError(null)
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Failed to load links')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setIsLoading(false)
-        }
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [id, pageIndex])
+  const fetchCurrentPage = useCallback(() => fetchPageLinks(id, page), [id, page])
+  const { data, error, isLoading } = usePolledQuery(
+    fetchCurrentPage,
+    isStillProcessing,
+  )
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
-      <Link
-        to="/"
-        className="mb-6 inline-flex text-sm font-medium text-sky-700 hover:underline"
-      >
+    <main className="mx-auto max-w-3xl px-4 py-12">
+      <h1 className="mb-8 break-words text-center text-4xl font-bold text-gray-800">
+        {data ? data.page.title || data.page.url : 'Page details'}
+      </h1>
+
+      <Link to="/" className="font-semibold text-blue-600 underline">
         &lt; Back
       </Link>
 
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-slate-900">
-          {response?.page.title || response?.page.url || 'Page details'}
-        </h1>
-        {response?.page.url && (
-          <p className="mt-1 break-all text-sm text-slate-600">
-            {response.page.url}
+      <div className="mt-1">
+        {error && (
+          <p role="alert" className="text-sm text-red-700">
+            {error}
           </p>
         )}
-      </header>
 
-      {error && (
-        <p className="mb-4 text-sm text-red-600" role="alert">
-          {error}
-        </p>
-      )}
+        {isLoading && <p className="text-sm text-gray-600">Loading links…</p>}
 
-      <LinkTable links={response?.data ?? []} isLoading={isLoading} />
-      <Pagination
-        page={pageIndex}
-        totalPages={response?.meta.totalPages ?? 0}
-        onPageChange={setPageIndex}
-      />
+        {data && <PageContent data={data} page={page} onPageChange={setPage} />}
+      </div>
     </main>
+  )
+}
+
+interface PageContentProps {
+  data: PageLinks
+  page: number
+  onPageChange: (page: number) => void
+}
+
+function PageContent({ data, page, onPageChange }: PageContentProps) {
+  if (data.page.status === 'IN_PROGRESS') {
+    return (
+      <p className="text-sm text-gray-600">
+        This page is still being scraped. Links will appear here automatically.
+      </p>
+    )
+  }
+
+  if (data.page.status === 'FAILED') {
+    return (
+      <p role="alert" className="text-sm text-red-700">
+        Scraping failed: {data.page.errorMessage ?? 'unknown error'}
+      </p>
+    )
+  }
+
+  return (
+    <>
+      <LinkTable links={data.data} />
+      <Pagination
+        page={page}
+        totalPages={data.meta.totalPages}
+        onPageChange={onPageChange}
+      />
+    </>
   )
 }

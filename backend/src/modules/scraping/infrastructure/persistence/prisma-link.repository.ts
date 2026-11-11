@@ -1,13 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { Link } from '../../domain/entities/link.entity';
-import {
-  LinkRepository,
-} from '../../domain/repositories/link.repository';
-import {
+import type { Link } from '../../domain/entities/link.entity';
+import type { LinkRepository } from '../../domain/repositories/link.repository';
+import { buildPaginatedResult } from '../../../../shared/pagination';
+import type {
   PaginatedResult,
   PaginationParams,
-} from '../../domain/repositories/scraped-page.repository';
-import { buildPaginatedResult } from '../../../../shared/pagination';
+} from '../../../../shared/pagination';
 import { PrismaService } from './prisma.service';
 import { toDomainLink } from './scraped-page.mapper';
 
@@ -19,12 +17,11 @@ export class PrismaLinkRepository implements LinkRepository {
     pageId: string,
     params: PaginationParams,
   ): Promise<PaginatedResult<Link>> {
-    const skip = (params.page - 1) * params.limit;
     const [records, total] = await this.prisma.$transaction([
       this.prisma.link.findMany({
         where: { pageId },
-        orderBy: { createdAt: 'asc' },
-        skip,
+        orderBy: { position: 'asc' },
+        skip: (params.page - 1) * params.limit,
         take: params.limit,
       }),
       this.prisma.link.count({ where: { pageId } }),

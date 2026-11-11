@@ -1,10 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { ScrapedPage } from '../../domain/entities/scraped-page.entity';
-import {
-  SCRAPED_PAGE_REPOSITORY,
-} from '../../domain/repositories/scraped-page.repository';
+import { SCRAPED_PAGE_REPOSITORY } from '../../domain/repositories/scraped-page.repository';
 import type { ScrapedPageRepository } from '../../domain/repositories/scraped-page.repository';
+import { PageUrl } from '../../domain/value-objects/page-url';
 import { SCRAPE_QUEUE_PORT } from '../ports/scrape-queue.port';
 import type { ScrapeQueuePort } from '../ports/scrape-queue.port';
 
@@ -22,39 +21,15 @@ export class CreateScrapeJobUseCase {
   ) {}
 
   async execute(command: CreateScrapeJobCommand): Promise<ScrapedPage> {
-    const url = this.normalizeUrl(command.url);
-    const pageId = randomUUID();
+    const url = PageUrl.create(command.url);
 
     const page = await this.scrapedPageRepository.create({
-      id: pageId,
-      url,
+      id: randomUUID(),
+      url: url.value,
     });
 
-    await this.scrapeQueue.enqueue({
-      pageId: page.id,
-      url: page.url,
-    });
+    await this.scrapeQueue.enqueue({ pageId: page.id, url: page.url });
 
     return page;
-  }
-
-  private normalizeUrl(rawUrl: string): string {
-    const trimmed = rawUrl.trim();
-    if (!trimmed) {
-      throw new Error('URL is required');
-    }
-
-    let parsed: URL;
-    try {
-      parsed = new URL(trimmed);
-    } catch {
-      throw new Error('Invalid URL');
-    }
-
-    if (!['http:', 'https:'].includes(parsed.protocol)) {
-      throw new Error('Only HTTP and HTTPS URLs are supported');
-    }
-
-    return parsed.toString();
   }
 }

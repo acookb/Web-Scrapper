@@ -1,13 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { CoreModule } from './core.module';
 import { ScrapingModule } from './modules/scraping/scraping.module';
 
 @Module({
-  imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-    ScrapingModule,
-  ],
+  imports: [CoreModule, ScrapingModule],
 })
 export class AppModule {}

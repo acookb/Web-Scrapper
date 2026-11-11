@@ -1,11 +1,15 @@
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import {
+import type {
   ScrapeJobPayload,
   ScrapeQueuePort,
 } from '../../application/ports/scrape-queue.port';
-import { SCRAPE_QUEUE_NAME } from './scrape.constants';
+import {
+  SCRAPE_JOB_NAME,
+  SCRAPE_JOB_OPTIONS,
+  SCRAPE_QUEUE_NAME,
+} from './scrape.constants';
 
 @Injectable()
 export class BullMqScrapeQueueAdapter implements ScrapeQueuePort {
@@ -14,15 +18,9 @@ export class BullMqScrapeQueueAdapter implements ScrapeQueuePort {
   ) {}
 
   async enqueue(payload: ScrapeJobPayload): Promise<void> {
-    await this.scrapeQueue.add('scrape', payload, {
+    await this.scrapeQueue.add(SCRAPE_JOB_NAME, payload, {
+      ...SCRAPE_JOB_OPTIONS,
       jobId: payload.pageId,
-      removeOnComplete: 100,
-      removeOnFail: 100,
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 2000,
-      },
     });
   }
 }

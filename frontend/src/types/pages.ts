@@ -1,13 +1,12 @@
 export type PageStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED'
 
-export interface ScrapedPageSummary {
+export interface ScrapedPage {
   id: string
   url: string
   title: string | null
   status: PageStatus
   linkCount: number
   errorMessage: string | null
-  displayValue: string
   createdAt: string
   updatedAt: string
 }
@@ -25,20 +24,11 @@ export interface PaginationMeta {
   totalPages: number
 }
 
-export interface PaginatedPagesResponse {
-  data: ScrapedPageSummary[]
+export interface Paginated<T> {
+  data: T[]
   meta: PaginationMeta
 }
 
-export interface PageLinksResponse {
-  page: {
-    id: string
-    url: string
-    title: string | null
-    status: PageStatus
-    linkCount: number
-    errorMessage: string | null
-  }
-  data: ScrapedLink[]
-  meta: PaginationMeta
+export interface PageLinks extends Paginated<ScrapedLink> {
+  page: ScrapedPage
 }

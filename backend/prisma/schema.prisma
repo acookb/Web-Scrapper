@@ -25,17 +25,20 @@ model ScrapedPage {
   updatedAt    DateTime   @updatedAt @map("updated_at")
   links        Link[]
 
+  @@index([createdAt])
   @@map("scraped_pages")
 }
 
 model Link {
   id        String      @id @default(uuid())
   pageId    String      @map("page_id")
+  /// Order in which the anchor appears in the scraped document.
+  position  Int
   href      String
   name      String
   createdAt DateTime    @default(now()) @map("created_at")
   page      ScrapedPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
 
-  @@index([pageId])
+  @@unique([pageId, position])
   @@map("links")
 }

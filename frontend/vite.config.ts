@@ -13,5 +13,6 @@ export default defineConfig({
     globals: true,
     setupFiles: './src/test/setup.ts',
     pool: 'threads',
+    env: { VITE_API_BASE_URL: 'http://api.test' },
   },
 })

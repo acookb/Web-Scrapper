@@ -1,54 +1,65 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
+import { buildPage } from '../test/fixtures'
+import type { ScrapedPage } from '../types/pages'
 import { PageTable } from './PageTable'
-import type { ScrapedPageSummary } from '../types/pages'
 
-const samplePages: ScrapedPageSummary[] = [
-  {
-    id: '1',
-    url: 'https://example.com',
-    title: 'Example Domain',
-    status: 'COMPLETED',
-    linkCount: 3,
-    errorMessage: null,
-    displayValue: '3',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    url: 'https://slow.example.com',
-    title: null,
-    status: 'IN_PROGRESS',
-    linkCount: 0,
-    errorMessage: null,
-    displayValue: 'in progress',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-]
+function renderTable(pages: ScrapedPage[]) {
+  return render(
+    <MemoryRouter>
+      <PageTable pages={pages} />
+    </MemoryRouter>,
+  )
+}
+
+function rows() {
+  return within(screen.getByRole('table', { name: 'Scraped pages' }))
+    .getAllByRole('row')
+    .map((row) =>
+      Array.from(row.querySelectorAll('th, td'), (cell) => cell.textContent),
+    )
+}
 
 describe('PageTable', () => {
-  it('renders page names, link counts and in-progress state', () => {
-    render(
-      <MemoryRouter>
-        <PageTable pages={samplePages} />
-      </MemoryRouter>,
-    )
+  it('lists each page name with its total links', () => {
+    renderTable([
+      buildPage({ id: '1', title: 'Google product', linkCount: 20 }),
+      buildPage({ id: '2', title: 'Amazon DYI page', linkCount: 6 }),
+    ])
 
-    expect(screen.getByText('Example Domain')).toBeInTheDocument()
-    expect(screen.getByText('3')).toBeInTheDocument()
-    expect(screen.getByText('in progress')).toBeInTheDocument()
+    expect(rows()).toEqual([
+      ['Name', 'Total links'],
+      ['Google product', '20'],
+      ['Amazon DYI page', '6'],
+    ])
   })
 
-  it('shows a loading state', () => {
-    render(
-      <MemoryRouter>
-        <PageTable pages={[]} isLoading />
-      </MemoryRouter>,
-    )
+  it('shows "in progress" for pages that are still being scraped', () => {
+    renderTable([buildPage({ title: null, status: 'IN_PROGRESS', linkCount: 0 })])
 
-    expect(screen.getByTestId('pages-loading')).toBeInTheDocument()
+    expect(rows()[1]).toEqual(['https://example.com/', 'in progress'])
+  })
+
+  it('shows failed pages with the error as a tooltip', () => {
+    renderTable([buildPage({ status: 'FAILED', errorMessage: 'timeout' })])
+
+    expect(screen.getByText('failed')).toHaveAttribute('title', 'timeout')
+  })
+
+  it('links each page to its details view', () => {
+    renderTable([buildPage({ id: 'abc' })])
+
+    expect(screen.getByRole('link', { name: 'Google product' })).toHaveAttribute(
+      'href',
+      '/pages/abc',
+    )
+  })
+
+  it('shows an empty state', () => {
+    renderTable([])
+
+    expect(screen.getByText(/no pages scraped yet/i)).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 })

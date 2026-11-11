@@ -1,13 +1,29 @@
+export interface PaginationParams {
+  page: number;
+  limit: number;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export const DEFAULT_PAGE_SIZE = 10;
+export const MAX_PAGE_SIZE = 100;
+
 export function normalizePagination(
   page?: number,
   limit?: number,
-): { page: number; limit: number; skip: number } {
-  const safePage = Math.max(1, Number(page) || 1);
-  const safeLimit = Math.min(100, Math.max(1, Number(limit) || 10));
+): PaginationParams {
   return {
-    page: safePage,
-    limit: safeLimit,
-    skip: (safePage - 1) * safeLimit,
+    page: Math.max(1, Math.trunc(Number(page)) || 1),
+    limit: Math.min(
+      MAX_PAGE_SIZE,
+      Math.max(1, Math.trunc(Number(limit)) || DEFAULT_PAGE_SIZE),
+    ),
   };
 }
 
@@ -16,12 +32,12 @@ export function buildPaginatedResult<T>(
   total: number,
   page: number,
   limit: number,
-) {
+): PaginatedResult<T> {
   return {
     items,
     total,
     page,
     limit,
-    totalPages: total === 0 ? 0 : Math.ceil(total / limit),
+    totalPages: Math.ceil(total / limit),
   };
 }

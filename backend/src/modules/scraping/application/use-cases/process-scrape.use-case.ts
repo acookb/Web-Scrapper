@@ -7,6 +7,11 @@ import type { ScraperPort } from '../../domain/services/scraper.port';
 export interface ProcessScrapeCommand {
   pageId: string;
   url: string;
+  /**
+   * When false the error is rethrown so the queue can retry the job;
+   * when true the page is persisted as FAILED.
+   */
+  isFinalAttempt: boolean;
 }
 
 @Injectable()
@@ -37,9 +42,15 @@ export class ProcessScrapeUseCase {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Unknown scraping error';
-      this.logger.error(
-        `Failed to scrape page ${command.pageId}: ${message}`,
-      );
+
+      if (!command.isFinalAttempt) {
+        this.logger.warn(
+          `Scrape of page ${command.pageId} failed, will retry: ${message}`,
+        );
+        throw error;
+      }
+
+      this.logger.error(`Failed to scrape page ${command.pageId}: ${message}`);
       await this.scrapedPageRepository.markFailed({
         pageId: command.pageId,
         errorMessage: message,

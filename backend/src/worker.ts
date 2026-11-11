@@ -1,12 +1,11 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
+import { WorkerModule } from './worker.module';
 
-async function bootstrap() {
-  const logger = new Logger('Worker');
-  const app = await NestFactory.createApplicationContext(AppModule);
+async function bootstrap(): Promise<void> {
+  const app = await NestFactory.createApplicationContext(WorkerModule);
   app.enableShutdownHooks();
-  logger.log('Scrape worker started and listening for BullMQ jobs');
+  new Logger('Worker').log('Scrape worker started and listening for jobs');
 }
 
 void bootstrap();

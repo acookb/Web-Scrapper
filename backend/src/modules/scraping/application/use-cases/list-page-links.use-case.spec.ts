@@ -1,55 +1,47 @@
-import { NotFoundException } from '@nestjs/common';
+import { PageNotFoundError } from '../../domain/errors/page-not-found.error';
+import {
+  PAGE_ID,
+  buildLink,
+  buildPage,
+  mockLinkRepository,
+  mockScrapedPageRepository,
+} from '../../testing/factories';
 import { ListPageLinksUseCase } from './list-page-links.use-case';
-import { ScrapedPage } from '../../domain/entities/scraped-page.entity';
-import { Link } from '../../domain/entities/link.entity';
-import type { ScrapedPageRepository } from '../../domain/repositories/scraped-page.repository';
-import type { LinkRepository } from '../../domain/repositories/link.repository';
 
 describe('ListPageLinksUseCase', () => {
-  const pageRepository: jest.Mocked<ScrapedPageRepository> = {
-    create: jest.fn(),
-    findById: jest.fn(),
-    findPaginated: jest.fn(),
-    markCompleted: jest.fn(),
-    markFailed: jest.fn(),
-    updateStatus: jest.fn(),
-  };
+  const pageRepository = mockScrapedPageRepository();
+  const linkRepository = mockLinkRepository();
+  const useCase = new ListPageLinksUseCase(pageRepository, linkRepository);
 
-  const linkRepository: jest.Mocked<LinkRepository> = {
-    findByPageId: jest.fn(),
-  };
+  beforeEach(() => jest.resetAllMocks());
 
-  it('returns page metadata and paginated links', async () => {
-    const page = ScrapedPage.createInProgress('page-1', 'https://example.com');
-    const link = new Link(
-      'link-1',
-      'page-1',
-      'https://iana.org',
-      'IANA',
-      new Date(),
-    );
-    pageRepository.findById.mockResolvedValue(page);
-    linkRepository.findByPageId.mockResolvedValue({
-      items: [link],
-      total: 1,
-      page: 1,
+  it('returns the page together with a page of its links', async () => {
+    const page = buildPage();
+    const links = {
+      items: [buildLink()],
+      total: 11,
+      page: 2,
       limit: 10,
-      totalPages: 1,
+      totalPages: 2,
+    };
+    pageRepository.findById.mockResolvedValue(page);
+    linkRepository.findByPageId.mockResolvedValue(links);
+
+    const result = await useCase.execute(PAGE_ID, { page: 2, limit: 10 });
+
+    expect(result).toEqual({ page, links });
+    expect(linkRepository.findByPageId).toHaveBeenCalledWith(PAGE_ID, {
+      page: 2,
+      limit: 10,
     });
-
-    const useCase = new ListPageLinksUseCase(pageRepository, linkRepository);
-    const result = await useCase.execute('page-1', { page: 1, limit: 10 });
-
-    expect(result.page.id).toBe('page-1');
-    expect(result.links.items[0].href).toBe('https://iana.org');
   });
 
-  it('throws NotFoundException when page is missing', async () => {
+  it('throws PageNotFoundError for an unknown page', async () => {
     pageRepository.findById.mockResolvedValue(null);
-    const useCase = new ListPageLinksUseCase(pageRepository, linkRepository);
 
-    await expect(useCase.execute('missing')).rejects.toBeInstanceOf(
-      NotFoundException,
+    await expect(useCase.execute(PAGE_ID)).rejects.toBeInstanceOf(
+      PageNotFoundError,
     );
+    expect(linkRepository.findByPageId).not.toHaveBeenCalled();
   });
 });

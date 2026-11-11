@@ -1,12 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
+import type { ScrapedPage } from '../../domain/entities/scraped-page.entity';
 import { SCRAPED_PAGE_REPOSITORY } from '../../domain/repositories/scraped-page.repository';
+import type { ScrapedPageRepository } from '../../domain/repositories/scraped-page.repository';
+import { normalizePagination } from '../../../../shared/pagination';
 import type {
   PaginatedResult,
   PaginationParams,
-  ScrapedPageRepository,
-} from '../../domain/repositories/scraped-page.repository';
-import type { ScrapedPage } from '../../domain/entities/scraped-page.entity';
-import { normalizePagination } from '../../../../shared/pagination';
+} from '../../../../shared/pagination';
 
 @Injectable()
 export class ListPagesUseCase {
@@ -15,10 +15,11 @@ export class ListPagesUseCase {
     private readonly scrapedPageRepository: ScrapedPageRepository,
   ) {}
 
-  async execute(
+  execute(
     params: Partial<PaginationParams> = {},
   ): Promise<PaginatedResult<ScrapedPage>> {
-    const { page, limit } = normalizePagination(params.page, params.limit);
-    return this.scrapedPageRepository.findPaginated({ page, limit });
+    return this.scrapedPageRepository.findPaginated(
+      normalizePagination(params.page, params.limit),
+    );
   }
 }

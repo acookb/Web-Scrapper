@@ -1,6 +1,5 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { SCRAPE_QUEUE_PORT } from './application/ports/scrape-queue.port';
 import { CreateScrapeJobUseCase } from './application/use-cases/create-scrape-job.use-case';
 import { ListPageLinksUseCase } from './application/use-cases/list-page-links.use-case';
@@ -14,52 +13,27 @@ import { PrismaScrapedPageRepository } from './infrastructure/persistence/prisma
 import { PrismaService } from './infrastructure/persistence/prisma.service';
 import { BullMqScrapeQueueAdapter } from './infrastructure/queue/bullmq-scrape-queue.adapter';
 import { SCRAPE_QUEUE_NAME } from './infrastructure/queue/scrape.constants';
-import { ScrapeProcessor } from './infrastructure/queue/scrape.processor';
 import { AxiosCheerioScraper } from './infrastructure/scraper/axios-cheerio.scraper';
 import { PagesController } from './presentation/controllers/pages.controller';
 
+/**
+ * HTTP-facing part of the scraping context. It only produces jobs; consuming
+ * them is the responsibility of {@link ScrapingWorkerModule}.
+ */
 @Module({
-  imports: [
-    ConfigModule,
-    BullModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.get<string>('REDIS_HOST', 'localhost'),
-          port: Number(config.get<string>('REDIS_PORT', '6379')),
-        },
-      }),
-    }),
-    BullModule.registerQueue({
-      name: SCRAPE_QUEUE_NAME,
-    }),
-  ],
+  imports: [BullModule.registerQueue({ name: SCRAPE_QUEUE_NAME })],
   controllers: [PagesController],
   providers: [
     PrismaService,
     CreateScrapeJobUseCase,
-    ProcessScrapeUseCase,
     ListPagesUseCase,
     ListPageLinksUseCase,
-    ScrapeProcessor,
-    {
-      provide: SCRAPED_PAGE_REPOSITORY,
-      useClass: PrismaScrapedPageRepository,
-    },
-    {
-      provide: LINK_REPOSITORY,
-      useClass: PrismaLinkRepository,
-    },
-    {
-      provide: SCRAPER_PORT,
-      useClass: AxiosCheerioScraper,
-    },
-    {
-      provide: SCRAPE_QUEUE_PORT,
-      useClass: BullMqScrapeQueueAdapter,
-    },
+    ProcessScrapeUseCase,
+    { provide: SCRAPED_PAGE_REPOSITORY, useClass: PrismaScrapedPageRepository },
+    { provide: LINK_REPOSITORY, useClass: PrismaLinkRepository },
+    { provide: SCRAPER_PORT, useClass: AxiosCheerioScraper },
+    { provide: SCRAPE_QUEUE_PORT, useClass: BullMqScrapeQueueAdapter },
   ],
-  exports: [ProcessScrapeUseCase, PrismaService],
+  exports: [ProcessScrapeUseCase],
 })
 export class ScrapingModule {}

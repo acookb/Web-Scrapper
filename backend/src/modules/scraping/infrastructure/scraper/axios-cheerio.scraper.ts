@@ -1,103 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import axios from 'axios';
-import { load } from 'cheerio';
-import {
+import type {
   ScrapeResult,
-  ScrapedLinkData,
   ScraperPort,
 } from '../../domain/services/scraper.port';
+import { extractPageData } from './html-link-extractor';
 
-const MAX_LINK_NAME_LENGTH = 500;
 const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
 
 @Injectable()
 export class AxiosCheerioScraper implements ScraperPort {
   async scrape(url: string): Promise<ScrapeResult> {
     const response = await axios.get<string>(url, {
       timeout: REQUEST_TIMEOUT_MS,
+      maxContentLength: MAX_RESPONSE_BYTES,
+      maxRedirects: 5,
       responseType: 'text',
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (compatible; WebScraperTechnicalTest/1.0; +https://example.local)',
+        'User-Agent': 'Mozilla/5.0 (compatible; WebScraperTechnicalTest/1.0)',
         Accept: 'text/html,application/xhtml+xml',
       },
-      maxRedirects: 5,
-      validateStatus: (status) => status >= 200 && status < 400,
     });
 
-    const $ = load(response.data);
-    const title = $('title').first().text().trim() || url;
-    const links: ScrapedLinkData[] = [];
-
-    $('a[href]').each((_, element) => {
-      const node = $(element);
-      const href = (node.attr('href') || '').trim();
-      if (!href) {
-        return;
-      }
-
-      const absoluteHref = this.toAbsoluteUrl(url, href);
-      if (!absoluteHref) {
-        return;
-      }
-
-      links.push({
-        href: absoluteHref,
-        name: this.extractLinkName($, element),
-      });
-    });
-
-    return { title, links };
-  }
-
-  // Cheerio's typings vary across versions; keep this adapter intentionally loose.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private extractLinkName($: any, element: any): string {
-    const node = $(element);
-    const hasComplexChildren =
-      node.children().length > 0 &&
-      node.find('img, svg, picture, video, iframe, object, embed').length > 0;
-
-    let name: string;
-    if (hasComplexChildren) {
-      name = $.html(element) || node.text();
-    } else {
-      name =
-        node.text().trim() ||
-        node.attr('aria-label') ||
-        node.attr('title') ||
-        '';
-      if (!name) {
-        name = $.html(element) || absoluteFallback(node.attr('href'));
-      }
-    }
-
-    const normalized = String(name).replace(/\s+/g, ' ').trim();
-    if (normalized.length <= MAX_LINK_NAME_LENGTH) {
-      return normalized || absoluteFallback(node.attr('href'));
-    }
-
-    return `${normalized.slice(0, MAX_LINK_NAME_LENGTH)}…`;
-  }
-
-  private toAbsoluteUrl(baseUrl: string, href: string): string | null {
-    if (
-      href.startsWith('javascript:') ||
-      href.startsWith('mailto:') ||
-      href.startsWith('tel:') ||
-      href.startsWith('#')
-    ) {
-      return null;
-    }
-
-    try {
-      return new URL(href, baseUrl).toString();
-    } catch {
-      return null;
-    }
+    return extractPageData(response.data, finalUrl(response.request, url));
   }
 }
 
-function absoluteFallback(href: string | undefined): string {
-  return href?.trim() || '(empty)';
+/** Relative links must be resolved against the URL reached after redirects. */
+function finalUrl(request: unknown, requestedUrl: string): string {
+  const responseUrl = (
+    request as { res?: { responseUrl?: unknown } } | undefined
+  )?.res?.responseUrl;
+  return typeof responseUrl === 'string' ? responseUrl : requestedUrl;
 }
