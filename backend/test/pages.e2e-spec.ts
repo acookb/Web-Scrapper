@@ -2,7 +2,8 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types';
-import { configureApp } from '../src/configure-app';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { OPENAPI_PATH, configureApp } from '../src/configure-app';
 import { SCRAPE_QUEUE_PORT } from '../src/modules/scraping/application/ports/scrape-queue.port';
 import { CreateScrapeJobUseCase } from '../src/modules/scraping/application/use-cases/create-scrape-job.use-case';
 import { ListPageLinksUseCase } from '../src/modules/scraping/application/use-cases/list-page-links.use-case';
@@ -15,7 +16,7 @@ import { PagesController } from '../src/modules/scraping/presentation/controller
 import type {
   PageLinksResponse,
   PageResponse,
-  PaginatedResponse,
+  PaginatedPagesResponse,
 } from '../src/modules/scraping/presentation/dto/page.response';
 import {
   PAGE_ID,
@@ -30,33 +31,70 @@ import {
  * HTTP contract tests: real controller, validation, filters and use cases,
  * with the persistence and queue ports replaced by mocks.
  */
+const pageRepository = mockScrapedPageRepository();
+const linkRepository = mockLinkRepository();
+const scrapeQueue = mockScrapeQueue();
+
+async function createApp(throttleLimit = 1000): Promise<INestApplication<App>> {
+  const moduleRef = await Test.createTestingModule({
+    imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: throttleLimit }])],
+    controllers: [PagesController],
+    providers: [
+      CreateScrapeJobUseCase,
+      ListPagesUseCase,
+      ListPageLinksUseCase,
+      { provide: SCRAPED_PAGE_REPOSITORY, useValue: pageRepository },
+      { provide: LINK_REPOSITORY, useValue: linkRepository },
+      { provide: SCRAPE_QUEUE_PORT, useValue: scrapeQueue },
+    ],
+  }).compile();
+
+  const app = moduleRef.createNestApplication<INestApplication<App>>({
+    logger: false,
+  });
+  configureApp(app);
+  return app.init();
+}
+
 describe('Pages HTTP API', () => {
   let app: INestApplication<App>;
-  const pageRepository = mockScrapedPageRepository();
-  const linkRepository = mockLinkRepository();
-  const scrapeQueue = mockScrapeQueue();
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({
-      controllers: [PagesController],
-      providers: [
-        CreateScrapeJobUseCase,
-        ListPagesUseCase,
-        ListPageLinksUseCase,
-        { provide: SCRAPED_PAGE_REPOSITORY, useValue: pageRepository },
-        { provide: LINK_REPOSITORY, useValue: linkRepository },
-        { provide: SCRAPE_QUEUE_PORT, useValue: scrapeQueue },
-      ],
-    }).compile();
-
-    app = moduleRef.createNestApplication({ logger: false });
-    configureApp(app);
-    await app.init();
+    app = await createApp();
   });
 
   afterAll(() => app.close());
 
   beforeEach(() => jest.resetAllMocks());
+
+  it('publishes an OpenAPI document describing the endpoints', async () => {
+    const response = await request(app.getHttpServer())
+      .get(`/${OPENAPI_PATH}-json`)
+      .expect(200);
+
+    const document = response.body as {
+      paths: Record<string, Record<string, unknown>>;
+    };
+    expect(Object.keys(document.paths)).toEqual(
+      expect.arrayContaining(['/pages', '/pages/{id}/links']),
+    );
+    expect(document.paths['/pages']).toHaveProperty('post');
+  });
+
+  it('sends security headers', async () => {
+    pageRepository.findPaginated.mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      limit: 10,
+      totalPages: 0,
+    });
+
+    const response = await request(app.getHttpServer()).get('/pages');
+
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.headers).not.toHaveProperty('x-powered-by');
+  });
 
   describe('POST /pages', () => {
     it('responds immediately with the page in progress and enqueues it', async () => {
@@ -138,7 +176,7 @@ describe('Pages HTTP API', () => {
         .query({ page: 2, limit: 10 })
         .expect(200);
 
-      const body = response.body as PaginatedResponse<PageResponse>;
+      const body = response.body as PaginatedPagesResponse;
       expect(body.data).toHaveLength(1);
       expect(body.data[0]).toMatchObject({
         id: PAGE_ID,
@@ -207,5 +245,32 @@ describe('Pages HTTP API', () => {
         .get('/pages/not-a-uuid/links')
         .expect(400);
     });
+  });
+});
+
+describe('POST /pages rate limiting', () => {
+  let app: INestApplication<App>;
+
+  beforeAll(async () => {
+    app = await createApp(2);
+  });
+
+  afterAll(() => app.close());
+
+  it('answers 429 once the limit is reached, without enqueuing', async () => {
+    jest.resetAllMocks();
+    pageRepository.create.mockImplementation(({ id, url }) =>
+      Promise.resolve(ScrapedPage.createInProgress(id, url)),
+    );
+    const post = () =>
+      request(app.getHttpServer())
+        .post('/pages')
+        .send({ url: 'https://example.com' });
+
+    await post().expect(201);
+    await post().expect(201);
+    await post().expect(429);
+
+    expect(scrapeQueue.enqueue).toHaveBeenCalledTimes(2);
   });
 });

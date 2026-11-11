@@ -6,8 +6,8 @@ import type { IncomingMessage, Server, ServerResponse } from 'http';
 import type { AddressInfo } from 'net';
 import request from 'supertest';
 import type { App } from 'supertest/types';
+import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/configure-app';
-import { CoreModule } from '../../src/core.module';
 import { PageStatus } from '../../src/modules/scraping/domain/enums/page-status.enum';
 import { PrismaService } from '../../src/modules/scraping/infrastructure/persistence/prisma.service';
 import type {
@@ -15,7 +15,6 @@ import type {
   PageResponse,
 } from '../../src/modules/scraping/presentation/dto/page.response';
 import { ScrapingWorkerModule } from '../../src/modules/scraping/scraping-worker.module';
-import { ScrapingModule } from '../../src/modules/scraping/scraping.module';
 
 const LINK_COUNT = 23;
 const SLOW_RESPONSE_MS = 1500;
@@ -76,7 +75,7 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
     fixtureOrigin = `http://127.0.0.1:${(fixtureServer.address() as AddressInfo).port}`;
 
     const moduleRef = await Test.createTestingModule({
-      imports: [CoreModule, ScrapingModule, ScrapingWorkerModule],
+      imports: [AppModule, ScrapingWorkerModule],
     }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
@@ -117,6 +116,17 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
     }
     throw new Error(`Page ${id} was not processed in time`);
   }
+
+  it('reports PostgreSQL and Redis as healthy', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/health')
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      status: 'ok',
+      info: { database: { status: 'up' }, redis: { status: 'up' } },
+    });
+  });
 
   it('scrapes a page in the background and paginates its links', async () => {
     const created = await addPage('/catalog');
