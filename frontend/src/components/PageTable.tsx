@@ -2,11 +2,19 @@ import { Link } from 'react-router-dom'
 import type { ScrapedPage } from '../types/pages'
 import { DataTable, cellClass } from './DataTable'
 
-interface PageTableProps {
-  pages: ScrapedPage[]
+export interface BackLinkState {
+  backTo: string
 }
 
-export function PageTable({ pages }: PageTableProps) {
+interface PageTableProps {
+  pages: ScrapedPage[]
+  /** URL the details view returns to, so "< Back" keeps the current page. */
+  backTo?: string
+}
+
+export function PageTable({ pages, backTo = '/' }: PageTableProps) {
+  const linkState: BackLinkState = { backTo }
+
   if (pages.length === 0) {
     return (
       <p className="text-sm text-gray-600">
@@ -22,6 +30,7 @@ export function PageTable({ pages }: PageTableProps) {
           <td className={cellClass}>
             <Link
               to={`/pages/${page.id}`}
+              state={linkState}
               className="break-words text-gray-900 hover:underline"
             >
               {page.title || page.url}

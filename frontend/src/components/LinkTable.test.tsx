@@ -35,6 +35,23 @@ describe('LinkTable', () => {
     expect(container.querySelector('img')).toBeNull()
   })
 
+  it('only makes http(s) URLs clickable', () => {
+    render(
+      <LinkTable
+        links={[
+          buildLink({ id: '1', href: 'mailto:hi@example.com' }),
+          buildLink({ id: '2', href: 'data:text/html,<script>x()</script>' }),
+          buildLink({ id: '3', href: 'https://example.com/' }),
+        ]}
+      />,
+    )
+
+    expect(screen.getAllByRole('link').map((a) => a.getAttribute('href'))).toEqual([
+      'https://example.com/',
+    ])
+    expect(screen.getByText('mailto:hi@example.com')).toBeInTheDocument()
+  })
+
   it('shows an empty state', () => {
     render(<LinkTable links={[]} />)
 

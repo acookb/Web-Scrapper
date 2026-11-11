@@ -1,8 +1,10 @@
-import { useCallback, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { useCallback } from 'react'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { fetchPageLinks } from '../api/pagesApi'
 import { LinkTable } from '../components/LinkTable'
+import type { BackLinkState } from '../components/PageTable'
 import { Pagination } from '../components/Pagination'
+import { usePageParam } from '../hooks/usePageParam'
 import { usePolledQuery } from '../hooks/usePolledQuery'
 import type { PageLinks } from '../types/pages'
 
@@ -12,7 +14,9 @@ function isStillProcessing(result: PageLinks): boolean {
 
 export function PageDetails() {
   const { id = '' } = useParams<{ id: string }>()
-  const [page, setPage] = useState(1)
+  const [page, setPage] = usePageParam()
+  const location = useLocation()
+  const backTo = (location.state as BackLinkState | null)?.backTo ?? '/'
 
   const fetchCurrentPage = useCallback(() => fetchPageLinks(id, page), [id, page])
   const { data, error, isLoading } = usePolledQuery(
@@ -26,7 +30,7 @@ export function PageDetails() {
         {data ? data.page.title || data.page.url : 'Page details'}
       </h1>
 
-      <Link to="/" className="font-semibold text-blue-600 underline">
+      <Link to={backTo} className="font-semibold text-blue-600 underline">
         &lt; Back
       </Link>
 

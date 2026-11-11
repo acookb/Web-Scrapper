@@ -3,6 +3,7 @@ import { createPage, fetchPages } from '../api/pagesApi'
 import { PageTable } from '../components/PageTable'
 import { Pagination } from '../components/Pagination'
 import { UrlForm } from '../components/UrlForm'
+import { usePageParam } from '../hooks/usePageParam'
 import { usePolledQuery } from '../hooks/usePolledQuery'
 import type { Paginated, ScrapedPage } from '../types/pages'
 
@@ -11,7 +12,7 @@ function hasPagesInProgress(result: Paginated<ScrapedPage>): boolean {
 }
 
 export function LandingPage() {
-  const [page, setPage] = useState(1)
+  const [page, setPage] = usePageParam()
   const [submitError, setSubmitError] = useState<string | null>(null)
 
   const fetchCurrentPage = useCallback(() => fetchPages(page), [page])
@@ -36,6 +37,7 @@ export function LandingPage() {
   }
 
   const error = submitError ?? pages.error
+  const listUrl = page > 1 ? `/?page=${page}` : '/'
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-16">
@@ -52,7 +54,7 @@ export function LandingPage() {
       ) : (
         pages.data && (
           <>
-            <PageTable pages={pages.data.data} />
+            <PageTable pages={pages.data.data} backTo={listUrl} />
             <Pagination
               page={page}
               totalPages={pages.data.meta.totalPages}
