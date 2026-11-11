@@ -1,0 +1,41 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PageStatus {
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
+
+model ScrapedPage {
+  id           String     @id @default(uuid())
+  url          String
+  title        String?
+  status       PageStatus @default(IN_PROGRESS)
+  linkCount    Int        @default(0) @map("link_count")
+  errorMessage String?    @map("error_message")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  links        Link[]
+
+  @@map("scraped_pages")
+}
+
+model Link {
+  id        String      @id @default(uuid())
+  pageId    String      @map("page_id")
+  href      String
+  name      String
+  createdAt DateTime    @default(now()) @map("created_at")
+  page      ScrapedPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId])
+  @@map("links")
+}
