@@ -6,7 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "install:all": "npm --prefix backend ci && npm --prefix frontend ci",
+    "install:all": "npm --prefix backend ci && npm --prefix backend run prisma:generate && npm --prefix frontend ci",
     "up": "docker compose up --build",
     "lint": "npm --prefix backend run lint && npm --prefix backend run format:check && npm --prefix frontend run lint",
     "test": "npm --prefix backend test && npm --prefix backend run test:e2e && npm --prefix frontend test",

@@ -184,6 +184,7 @@ docker compose up -d postgres redis
 cd backend
 cp .env.example .env
 npm install
+npx prisma generate        # explicit, since npm 11+ blocks install scripts by default
 npx prisma migrate deploy
 npm run start:dev          # API on http://localhost:3000, docs on /docs
 npm run start:worker:dev   # in a second terminal: the worker that scrapes pages
