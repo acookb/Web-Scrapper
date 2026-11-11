@@ -88,5 +88,8 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "testEnvironment": "node"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

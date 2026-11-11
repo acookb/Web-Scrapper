@@ -1,0 +1,17 @@
+{
+  "name": "web-scraper",
+  "private": true,
+  "description": "Asynchronous web scraper: NestJS API + BullMQ worker and a React frontend",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "install:all": "npm --prefix backend ci && npm --prefix frontend ci",
+    "up": "docker compose up --build",
+    "lint": "npm --prefix backend run lint && npm --prefix backend run format:check && npm --prefix frontend run lint",
+    "test": "npm --prefix backend test && npm --prefix backend run test:e2e && npm --prefix frontend test",
+    "test:all": "npm --prefix backend run test:cov && npm --prefix frontend run test:cov",
+    "build": "npm --prefix backend run build && npm --prefix frontend run build",
+    "verify": "npm run lint && npm run build && npm run test:all"
+  }
+}
