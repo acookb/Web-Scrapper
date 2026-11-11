@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { TestingModule } from '@nestjs/testing';
 import { createServer } from 'http';
 import type { IncomingMessage, Server, ServerResponse } from 'http';
 import type { AddressInfo } from 'net';
@@ -14,7 +15,7 @@ import type {
   PageLinksResponse,
   PageResponse,
 } from '../../src/modules/scraping/presentation/dto/page.response';
-import { ScrapingWorkerModule } from '../../src/modules/scraping/scraping-worker.module';
+import { WorkerModule } from '../../src/worker.module';
 
 const LINK_COUNT = 23;
 const SLOW_RESPONSE_MS = 1500;
@@ -53,10 +54,11 @@ const ROUTES: Record<string, Route> = {
 
 /**
  * End-to-end flow against real PostgreSQL and Redis: the HTTP API enqueues a
- * job and an in-process BullMQ worker scrapes a local fixture server.
+ * job and a separately booted worker scrapes a local fixture server.
  */
 describe('Scraping flow (PostgreSQL + Redis)', () => {
   let app: INestApplication<App>;
+  let worker: TestingModule;
   let fixtureServer: Server;
   let fixtureOrigin: string;
   const hits = new Map<string, number>();
@@ -74,12 +76,19 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
     );
     fixtureOrigin = `http://127.0.0.1:${(fixtureServer.address() as AddressInfo).port}`;
 
-    const moduleRef = await Test.createTestingModule({
-      imports: [AppModule, ScrapingWorkerModule],
+    // API and worker boot from their own root modules, exactly as
+    // `node dist/main` and `node dist/worker` do in production.
+    const apiModule = await Test.createTestingModule({
+      imports: [AppModule],
     }).compile();
-    app = moduleRef.createNestApplication();
+    app = apiModule.createNestApplication();
     configureApp(app);
     await app.init();
+
+    worker = await Test.createTestingModule({
+      imports: [WorkerModule],
+    }).compile();
+    await worker.init();
 
     await app
       .get(PrismaService)
@@ -87,6 +96,7 @@ describe('Scraping flow (PostgreSQL + Redis)', () => {
   });
 
   afterAll(async () => {
+    await worker.close();
     await app.close();
     await new Promise((resolve) => fixtureServer.close(resolve));
   });

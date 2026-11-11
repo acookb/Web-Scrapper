@@ -1,3 +1,4 @@
+import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { EnvironmentVariables } from '../../config/environment';
 import {
@@ -7,7 +8,10 @@ import {
 import { MarkPageFailedUseCase } from './application/use-cases/mark-page-failed.use-case';
 import { ProcessScrapeUseCase } from './application/use-cases/process-scrape.use-case';
 import { SCRAPER_PORT } from './domain/services/scraper.port';
-import { SCRAPE_CONCURRENCY } from './infrastructure/queue/scrape.constants';
+import {
+  SCRAPE_CONCURRENCY,
+  SCRAPE_QUEUE_NAME,
+} from './infrastructure/queue/scrape.constants';
 import { ScrapeProcessor } from './infrastructure/queue/scrape.processor';
 import { StalePageReaper } from './infrastructure/queue/stale-page-reaper';
 import { AxiosCheerioScraper } from './infrastructure/scraper/axios-cheerio.scraper';
@@ -19,7 +23,11 @@ import { ScrapingPersistenceModule } from './scraping-persistence.module';
 
 /** Consumer side of the scraping context: runs only in the worker process. */
 @Module({
-  imports: [ScrapingPersistenceModule],
+  imports: [
+    ScrapingPersistenceModule,
+    // Also registers the BullMQ explorer that starts the @Processor workers.
+    BullModule.registerQueue({ name: SCRAPE_QUEUE_NAME }),
+  ],
   providers: [
     ProcessScrapeUseCase,
     MarkPageFailedUseCase,

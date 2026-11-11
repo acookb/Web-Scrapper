@@ -35,9 +35,19 @@ describe('Prisma repositories (PostgreSQL)', () => {
   });
 
   it('lists the most recently added pages first', async () => {
-    const first = await createPage('https://one.example/');
-    const second = await createPage('https://two.example/');
-    const third = await createPage('https://three.example/');
+    const createdAt = (minute: number) =>
+      new Date(`2024-01-01T00:0${minute}:00.000Z`);
+    const [first, second, third] = await Promise.all(
+      [1, 2, 3].map((minute) =>
+        prisma.scrapedPage.create({
+          data: {
+            id: randomUUID(),
+            url: `https://${minute}.example/`,
+            createdAt: createdAt(minute),
+          },
+        }),
+      ),
+    );
 
     const firstPage = await pages.findPaginated({ page: 1, limit: 2 });
     const secondPage = await pages.findPaginated({ page: 2, limit: 2 });
